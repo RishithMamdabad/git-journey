@@ -1,0 +1,2214 @@
+app.py:
+
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+
+from nlp_pipeline import (
+    process_dataframe,
+    generate_file_insights,
+    extract_top_reasons,
+    detect_domain,
+    generate_ai_recommendations,
+    generate_risk_analysis,
+    extract_negative_topics,
+    generate_department_sentiment,
+    generate_designation_sentiment,
+    generate_cross_file_intelligence
+)
+
+# =====================================================
+# PAGE CONFIG
+# =====================================================
+
+st.set_page_config(
+    page_title="Sentiment Analyzer Model",
+    layout="wide"
+)
+
+# =====================================================
+# GLOBAL STYLING
+# =====================================================
+
+st.markdown(
+    """
+    <style>
+
+    .stApp {
+        background: linear-gradient(
+            135deg,
+            #06121F 0%,
+            #081827 45%,
+            #0E2238 100%
+        );
+        color: white;
+    }
+
+    section[data-testid="stSidebar"] {
+        background-color: #081827;
+    }
+
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+        max-width: 96%;
+    }
+
+    html, body, [class*="css"] {
+        font-size: 20px !important;
+    }
+
+    p, div, label, span {
+        color: #E8EEF7 !important;
+        font-size: 22px !important;
+        line-height: 1.8 !important;
+    }
+
+    /* =====================================================
+       MAIN TITLE
+    ===================================================== */
+
+    h1 {
+        font-size: 56px !important;
+        font-weight: 800 !important;
+        color: white !important;
+        margin-bottom: 10px !important;
+    }
+
+    /* =====================================================
+       SECTION HEADINGS
+    ===================================================== */
+
+    h2 {
+        font-size: 40px !important;
+        font-weight: 800 !important;
+        color: white !important;
+    }
+
+    h3 {
+        font-size: 34px !important;
+        font-weight: 700 !important;
+        color: white !important;
+    }
+
+    /* =====================================================
+       SUBHEADERS
+    ===================================================== */
+
+    .stSubheader {
+        font-size: 32px !important;
+        font-weight: 700 !important;
+    }
+
+    /* =====================================================
+       METRICS
+    ===================================================== */
+
+    div[data-testid="metric-container"] {
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.08);
+        padding: 30px;
+        border-radius: 22px;
+        backdrop-filter: blur(12px);
+        box-shadow: 0px 4px 30px rgba(0,0,0,0.25);
+    }
+
+    div[data-testid="metric-container"] label {
+        font-size: 24px !important;
+        font-weight: 700 !important;
+    }
+
+    div[data-testid="metric-container"] div {
+        font-size: 36px !important;
+        font-weight: 800 !important;
+    }
+
+    /* =====================================================
+       STORY CARD
+    ===================================================== */
+
+    .story-card {
+        background: linear-gradient(
+            135deg,
+            rgba(0,194,255,0.15),
+            rgba(0,114,255,0.05)
+        );
+        padding: 40px;
+        border-radius: 28px;
+        border: 1px solid rgba(255,255,255,0.08);
+        margin-bottom: 40px;
+    }
+
+    .story-text {
+        font-size: 28px !important;
+        line-height: 2 !important;
+        color: #F5F7FA !important;
+    }
+
+    /* =====================================================
+       INSIGHT CARD
+    ===================================================== */
+
+    .insight-card {
+        background: rgba(255,255,255,0.04);
+        padding: 30px;
+        border-radius: 22px;
+        border: 1px solid rgba(255,255,255,0.06);
+        margin-bottom: 20px;
+        line-height: 2;
+        font-size: 24px !important;
+    }
+
+    /* =====================================================
+       FILE UPLOADER
+    ===================================================== */
+
+    .stFileUploader label {
+        font-size: 28px !important;
+        font-weight: 700 !important;
+    }
+
+    /* =====================================================
+       EXPANDER
+    ===================================================== */
+
+    .streamlit-expanderHeader {
+        font-size: 24px !important;
+        font-weight: 700 !important;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# =====================================================
+# TITLE
+# =====================================================
+
+st.title("Sentiment Analyzer Model")
+
+st.markdown(
+    """
+    <div style="font-size:28px; line-height:2;">
+    AI-powered sentiment analyzer platform designed for leadership visibility,
+    sentiment intelligence, workforce analytics, customer experience analytics,
+    and strategic business risk assessment.
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+# =====================================================
+# FILE UPLOADER
+# =====================================================
+
+uploaded_files = st.file_uploader(
+    "Upload Datasets",
+    type=["xlsx", "xls", "csv"],
+    accept_multiple_files=True
+)
+
+# =====================================================
+# STORE ALL FILES
+# =====================================================
+
+all_processed_dfs = []
+
+# =====================================================
+# PROCESS FILES
+# =====================================================
+
+if uploaded_files:
+
+    for file in uploaded_files:
+
+        st.divider()
+
+        st.markdown(
+            f"""
+            <h2 style="
+                font-size:40px;
+                margin-top:25px;
+                margin-bottom:25px;
+                color:white;
+            ">
+            {file.name}
+            </h2>
+            """,
+            unsafe_allow_html=True
+        )
+
+        # =================================================
+        # READ FILE
+        # =================================================
+
+        try:
+
+            if file.name.endswith(".csv"):
+                df = pd.read_csv(file)
+
+            else:
+                df = pd.read_excel(file)
+
+        except Exception as e:
+            st.error(f"Error reading file: {e}")
+            continue
+
+        if df.empty:
+            st.warning("Uploaded dataset is empty.")
+            continue
+
+        df.columns = [str(col).strip().lower() for col in df.columns]
+
+        domain = detect_domain(df)
+
+        with st.spinner("Generating sentiment intelligence..."):
+
+            processed_df, topics = process_dataframe(df)
+
+        all_processed_dfs.append(processed_df)
+
+        insights = generate_file_insights(processed_df)
+
+        total = (
+            insights["positive"] +
+            insights["negative"] +
+            insights["neutral"]
+        )
+
+        if total == 0:
+            total = 1
+
+        positive_pct = round((insights["positive"] / total) * 100, 1)
+        negative_pct = round((insights["negative"] / total) * 100, 1)
+        neutral_pct = round((insights["neutral"] / total) * 100, 1)
+
+        sentiment_score = round(
+            positive_pct - negative_pct,
+            1
+        )
+
+        # =================================================
+        # SUMMARY
+        # =================================================
+
+        summary_html = f"""
+<div class="story-card">
+
+<h2 style="font-size:40px; font-weight:800; color:white;">
+Dataset Intelligence Summary
+</h2>
+
+<div class="story-text">
+
+The uploaded dataset primarily reflects sentiment patterns,
+operational experiences, engagement signals, and discussion themes
+associated with <b>{domain.upper()}</b> related interactions.
+
+<br><br>
+
+The overall sentiment score for this dataset is currently
+<b>{sentiment_score}%</b>, indicating the dominant experience
+perception across the analyzed responses.
+
+</div>
+
+</div>
+"""
+
+        st.markdown(summary_html, unsafe_allow_html=True)
+
+        # =================================================
+        # KPI SECTION
+        # =================================================
+
+        st.subheader("Sentiment Overview")
+
+        c1, c2, c3, c4 = st.columns(4)
+
+        c1.metric("Total Responses", insights["total_records"])
+        c2.metric("Positive", insights["positive"])
+        c3.metric("Negative", insights["negative"])
+        c4.metric("Neutral", insights["neutral"])
+
+        # =================================================
+        # SENTIMENT DISTRIBUTION
+        # =================================================
+
+        st.subheader("Sentiment Distribution")
+
+        fig_sentiment = go.Figure(
+            data=[
+                go.Pie(
+                    labels=[
+                        f"Negative {negative_pct}%",
+                        f"Neutral {neutral_pct}%",
+                        f"Positive {positive_pct}%"
+                    ],
+
+                    values=[
+                        negative_pct,
+                        neutral_pct,
+                        positive_pct
+                    ],
+
+                    hole=0.72,
+
+                    marker=dict(
+                        colors=[
+                            "#FF4B4B",
+                            "#FFD700",
+                            "#00D084"
+                        ]
+                    ),
+
+                    textinfo="label",
+
+                    textfont=dict(
+                        size=30,
+                        color="white"
+                    )
+                )
+            ]
+        )
+
+        fig_sentiment.update_layout(
+            paper_bgcolor="#081827",
+            plot_bgcolor="#081827",
+
+            font=dict(
+                color="white",
+                size=28
+            ),
+
+            height=750,
+            showlegend=False
+        )
+
+        st.plotly_chart(
+            fig_sentiment,
+            use_container_width=True
+        )
+
+        # =================================================
+        # TOP TOPICS
+        # =================================================
+
+        st.subheader("Top Topics Discussed")
+
+        top_topics = (
+            pd.Series(topics)
+            .value_counts()
+            .head(5)
+            .reset_index()
+        )
+
+        top_topics.columns = [
+            "Topic",
+            "Frequency"
+        ]
+
+        fig_topics = px.bar(
+            top_topics,
+            x="Topic",
+            y="Frequency",
+            text="Frequency",
+            template="plotly_dark"
+        )
+
+        fig_topics.update_traces(
+            marker_color="#3B82F6",
+            textposition="outside",
+            textfont_size=30
+        )
+
+        fig_topics.update_layout(
+            paper_bgcolor="#081827",
+            plot_bgcolor="#081827",
+
+            font=dict(
+                color="white",
+                size=28
+            ),
+
+            xaxis=dict(
+                title_font=dict(size=32),
+                tickfont=dict(size=26)
+            ),
+
+            yaxis=dict(
+                title_font=dict(size=32),
+                tickfont=dict(size=26)
+            ),
+
+            height=850
+        )
+
+        st.plotly_chart(
+            fig_topics,
+            use_container_width=True
+        )
+
+        # =================================================
+        # NEGATIVE TOPICS
+        # =================================================
+
+        st.subheader("Top Topics From Negative Responses")
+
+        negative_topics = extract_negative_topics(processed_df)
+
+        if not negative_topics.empty:
+
+            fig_neg = px.bar(
+                negative_topics,
+                x="Frequency",
+                y="Topic",
+                orientation="h",
+                text="Frequency",
+                template="plotly_dark"
+            )
+
+            fig_neg.update_traces(
+                marker_color="#FF4B4B",
+                textposition="outside",
+                textfont_size=30
+            )
+
+            fig_neg.update_layout(
+                paper_bgcolor="#081827",
+                plot_bgcolor="#081827",
+
+                font=dict(
+                    color="white",
+                    size=30
+                ),
+
+                xaxis=dict(
+                    title="Frequency",
+                    title_font=dict(size=34),
+                    tickfont=dict(size=28)
+                ),
+
+                yaxis=dict(
+                    title="Topic",
+                    title_font=dict(size=34),
+                    tickfont=dict(size=28)
+                ),
+
+                height=900
+            )
+
+            st.plotly_chart(
+                fig_neg,
+                use_container_width=True
+            )
+
+        # =================================================
+        # DEPARTMENT ANALYSIS
+        # =================================================
+
+        dept_df = generate_department_sentiment(
+            processed_df
+        )
+
+        if not dept_df.empty:
+
+            st.subheader(
+                "Department / Business Unit Sentiment Analysis"
+            )
+
+            fig_dept = go.Figure()
+
+            sentiment_colors = {
+                "NEGATIVE": "#FF4B4B",
+                "NEUTRAL": "#FFD700",
+                "POSITIVE": "#00D084"
+            }
+
+            for sentiment in dept_df.columns[1:]:
+
+                fig_dept.add_trace(
+                    go.Bar(
+                        name=sentiment,
+
+                        x=dept_df[dept_df.columns[0]],
+
+                        y=dept_df[sentiment],
+
+                        text=dept_df[sentiment],
+
+                        textposition="outside",
+
+                        textfont=dict(size=24),
+
+                        marker_color=sentiment_colors.get(
+                            sentiment,
+                            "#CCCCCC"
+                        )
+                    )
+                )
+
+            fig_dept.update_layout(
+                barmode="group",
+
+                paper_bgcolor="#081827",
+                plot_bgcolor="#081827",
+
+                font=dict(
+                    color="white",
+                    size=28
+                ),
+
+                xaxis=dict(
+                    title_font=dict(size=32),
+                    tickfont=dict(size=26)
+                ),
+
+                yaxis=dict(
+                    title_font=dict(size=32),
+                    tickfont=dict(size=26)
+                ),
+
+                legend=dict(
+                    font=dict(size=24)
+                ),
+
+                height=900
+            )
+
+            st.plotly_chart(
+                fig_dept,
+                use_container_width=True
+            )
+
+        # =================================================
+        # DESIGNATION ANALYSIS
+        # =================================================
+
+        designation_df = generate_designation_sentiment(
+            processed_df
+        )
+
+        if not designation_df.empty:
+
+            st.subheader(
+                "Designation / Position Sentiment Analysis"
+            )
+
+            fig_desig = go.Figure()
+
+            sentiment_colors = {
+                "NEGATIVE": "#FF4B4B",
+                "NEUTRAL": "#FFD700",
+                "POSITIVE": "#00D084"
+            }
+
+            for sentiment in designation_df.columns[1:]:
+
+                fig_desig.add_trace(
+                    go.Bar(
+                        name=sentiment,
+
+                        x=designation_df[
+                            designation_df.columns[0]
+                        ],
+
+                        y=designation_df[sentiment],
+
+                        text=designation_df[sentiment],
+
+                        textposition="outside",
+
+                        textfont=dict(size=24),
+
+                        marker_color=sentiment_colors.get(
+                            sentiment,
+                            "#CCCCCC"
+                        )
+                    )
+                )
+
+            fig_desig.update_layout(
+                barmode="group",
+
+                paper_bgcolor="#081827",
+                plot_bgcolor="#081827",
+
+                font=dict(
+                    color="white",
+                    size=28
+                ),
+
+                xaxis=dict(
+                    title_font=dict(size=32),
+                    tickfont=dict(size=26)
+                ),
+
+                yaxis=dict(
+                    title_font=dict(size=32),
+                    tickfont=dict(size=26)
+                ),
+
+                legend=dict(
+                    font=dict(size=24)
+                ),
+
+                height=900
+            )
+
+            st.plotly_chart(
+                fig_desig,
+                use_container_width=True
+            )
+
+        # =================================================
+        # BUSINESS RISKS
+        # =================================================
+
+        st.subheader("Business Risk Intelligence")
+
+        risks = generate_risk_analysis(
+            processed_df,
+            dept_df
+        )
+
+        for risk in risks:
+
+            st.markdown(
+                f"""
+                <div class="insight-card">
+                    {risk}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        # =================================================
+        # STRATEGIC RECOMMENDATIONS
+        # =================================================
+
+        st.subheader("Strategic Recommendations")
+
+        recommendations = generate_ai_recommendations(
+            processed_df,
+            dept_df
+        )
+
+        for rec in recommendations:
+
+            st.markdown(
+                f"""
+                <div class="insight-card">
+                    {rec}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        # =================================================
+        # DATA PREVIEW
+        # =================================================
+
+        with st.expander("View Processed Dataset"):
+
+            st.dataframe(
+                processed_df.head(20),
+                use_container_width=True
+            )
+
+    # =====================================================
+    # CROSS FILE INTELLIGENCE
+    # =====================================================
+
+    if len(all_processed_dfs) > 1:
+
+        st.divider()
+
+        st.header(
+            "Cross Intelligence Sentiment Analysis"
+        )
+
+        cross_analysis = (
+            generate_cross_file_intelligence(
+                all_processed_dfs
+            )
+        )
+
+        cross_html = f"""
+<div class="story-card">
+
+<h2 style="font-size:40px; font-weight:800; color:white;">
+Cross Dataset Intelligence Summary
+</h2>
+
+<div class="story-text">
+
+Across all uploaded datasets, the dominant overall sentiment is
+<b>{cross_analysis['overall_sentiment']}</b>.
+
+<br><br>
+
+The strongest discussion themes are centered around
+<b>{cross_analysis['top_topics']}</b>.
+
+<br><br>
+
+Leadership attention is critically required in areas associated with
+<b>{cross_analysis['risk_topics']}</b>.
+
+</div>
+
+</div>
+"""
+
+        st.markdown(cross_html, unsafe_allow_html=True)
+
+        fig_cross = go.Figure(
+            data=[
+                go.Pie(
+                    labels=[
+                        "Negative",
+                        "Neutral",
+                        "Positive"
+                    ],
+
+                    values=[
+                        cross_analysis["negative"],
+                        cross_analysis["neutral"],
+                        cross_analysis["positive"]
+                    ],
+
+                    hole=0.7,
+
+                    marker=dict(
+                        colors=[
+                            "#FF4B4B",
+                            "#FFD700",
+                            "#00D084"
+                        ]
+                    ),
+
+                    textinfo="label+percent",
+
+                    textfont=dict(
+                        size=30,
+                        color="white"
+                    )
+                )
+            ]
+        )
+
+        fig_cross.update_layout(
+            paper_bgcolor="#081827",
+            plot_bgcolor="#081827",
+
+            font=dict(
+                color="white",
+                size=30
+            ),
+
+            height=750
+        )
+
+        st.plotly_chart(
+            fig_cross,
+            use_container_width=True
+        )
+
+        st.subheader(
+            "Cross Dataset Risk Intelligence"
+        )
+
+        for risk in cross_analysis["risks"]:
+
+            st.markdown(
+                f"""
+                <div class="insight-card">
+                    {risk}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        st.subheader(
+            "Cross Dataset Strategic Recommendations"
+        )
+
+        for rec in cross_analysis["recommendations"]:
+
+            st.markdown(
+                f"""
+                <div class="insight-card">
+                    {rec}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+else:
+
+    st.info(
+        "Upload datasets to begin analysis."
+    )
+----------------------------------------------------
+config.py:
+
+import re
+
+# =====================================================
+# THRESHOLDS
+# =====================================================
+
+TOPIC_THRESHOLD = 0.40
+SENTIMENT_THRESHOLD = 0.60
+
+# =====================================================
+# NLP RULES
+# =====================================================
+
+MIN_WORDS_FOR_NLP = 5
+
+MIN_MEANINGFUL_RATIO = 0.40
+
+# =====================================================
+# RATING → SENTIMENT
+# =====================================================
+
+RATING_SENTIMENT = {
+
+    1: "NEGATIVE",
+    2: "NEGATIVE",
+    3: "NEUTRAL",
+    4: "POSITIVE",
+    5: "POSITIVE"
+}
+
+# =====================================================
+# ENTERPRISE THEMES
+# =====================================================
+
+ENTERPRISE_TOPICS = [
+
+    # Employee Experience
+    "Leadership",
+    "Communication",
+    "Career Growth",
+    "Work-Life Balance",
+    "Recognition",
+    "Compensation",
+    "Culture",
+    "Engagement",
+    "Training",
+    "Collaboration",
+
+    # Operations
+    "Technology",
+    "Process Efficiency",
+    "Performance Management",
+    "Operational Support",
+    "Innovation",
+
+    # Customer / Support
+    "Customer Service",
+    "Issue Resolution",
+    "Response Time",
+    "Support Experience",
+
+    # Healthcare
+    "Patient Care",
+    "Facilities",
+    "Medical Support",
+
+    # Finance
+    "Claims",
+    "Approval Process",
+    "Documentation",
+
+    # Product
+    "Product Features",
+    "Usability",
+    "Pricing",
+
+    # Travel
+    "Booking Experience",
+    "Transport",
+    "Hotel Experience",
+
+    # Research
+    "Research Process",
+    "Participant Experience"
+]
+
+# =====================================================
+# BUSINESS STOPWORDS
+# =====================================================
+
+BUSINESS_STOPWORDS = {
+
+    "somewhat",
+    "really",
+    "very",
+    "rarely",
+    "never",
+    "always",
+    "regularly",
+    "often",
+    "mostly",
+    "quite",
+    "would",
+    "could",
+    "should",
+    "might",
+    "maybe",
+    "perhaps",
+    "about",
+    "there",
+    "their",
+    "them",
+    "they",
+    "this",
+    "that",
+    "with",
+    "from",
+    "have",
+    "been",
+    "were",
+    "while",
+    "where",
+    "which",
+    "because",
+    "during",
+    "through",
+    "after",
+    "before",
+    "into",
+    "your",
+    "ours",
+    "mine",
+    "hers",
+    "his",
+    "herself",
+    "himself",
+    "ourselves"
+}
+
+# =====================================================
+# DOMAIN KEYWORDS
+# =====================================================
+
+DOMAIN_KEYWORDS = {
+
+    "employee": [
+
+        "employee",
+        "manager",
+        "leadership",
+        "culture",
+        "engagement",
+        "recognition",
+        "career",
+        "onboarding",
+        "offboarding"
+    ],
+
+    "candidate": [
+
+        "candidate",
+        "interview",
+        "recruitment",
+        "hiring",
+        "application"
+    ],
+
+    "learning": [
+
+        "learning",
+        "training",
+        "development",
+        "skills",
+        "mentorship"
+    ],
+
+    "support": [
+
+        "support",
+        "ticket",
+        "resolution",
+        "issue",
+        "response"
+    ],
+
+    "healthcare": [
+
+        "patient",
+        "hospital",
+        "doctor",
+        "nursing",
+        "medical"
+    ],
+
+    "finance": [
+
+        "loan",
+        "claims",
+        "insurance",
+        "approval",
+        "documentation"
+    ],
+
+    "product": [
+
+        "product",
+        "feature",
+        "pricing",
+        "usability",
+        "interface"
+    ],
+
+    "travel": [
+
+        "travel",
+        "trip",
+        "booking",
+        "hotel",
+        "transport"
+    ],
+
+    "research": [
+
+        "research",
+        "study",
+        "participant",
+        "trial",
+        "consent"
+    ]
+}
+
+# =====================================================
+# NLP MODELS
+# =====================================================
+
+EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+
+SENTIMENT_MODEL = (
+    "cardiffnlp/twitter-roberta-base-sentiment-latest"
+)
+-----------------------------------------
+models.py:
+
+import torch
+import streamlit as st
+
+from transformers import pipeline
+from sentence_transformers import SentenceTransformer
+
+from config import (
+    SENTIMENT_MODEL,
+    EMBEDDING_MODEL
+)
+
+# =====================================================
+# PERFORMANCE
+# =====================================================
+
+torch.set_num_threads(4)
+
+DEVICE = (
+
+    0
+
+    if torch.cuda.is_available()
+
+    else -1
+)
+
+# =====================================================
+# LOAD MODELS
+# =====================================================
+
+@st.cache_resource
+def get_models():
+
+    sentiment_model = pipeline(
+
+        task="sentiment-analysis",
+
+        model=SENTIMENT_MODEL,
+
+        device=DEVICE,
+
+        truncation=True
+    )
+
+    embedding_model = SentenceTransformer(
+
+        EMBEDDING_MODEL,
+
+        device=(
+
+            "cuda"
+
+            if torch.cuda.is_available()
+
+            else "cpu"
+        )
+    )
+
+    embedding_model.max_seq_length = 256
+
+    return (
+
+        sentiment_model,
+        embedding_model
+    )
+
+# =====================================================
+# DEVICE INFO
+# =====================================================
+
+def get_device_info():
+
+    return {
+
+        "cuda_available": torch.cuda.is_available(),
+
+        "device": (
+
+            torch.cuda.get_device_name(0)
+
+            if torch.cuda.is_available()
+
+            else "CPU"
+        )
+    }
+-----------------------------------------------------------------------
+nlp_pipeline.py:
+
+import re
+import pandas as pd
+
+from collections import Counter
+from sentence_transformers import util
+
+from config import *
+from models import get_models
+
+# =====================================================
+# LOAD MODELS
+# =====================================================
+
+sentiment_model, embedding_model = get_models()
+
+# =====================================================
+# CLEAN TEXT
+# =====================================================
+
+def clean_text(text):
+
+    text = str(text).lower()
+
+    text = re.sub(
+        r"http\S+|www\S+",
+        "",
+        text
+    )
+
+    text = re.sub(
+        r"<.*?>",
+        "",
+        text
+    )
+
+    text = re.sub(
+        r"[^a-zA-Z0-9\s]",
+        " ",
+        text
+    )
+
+    text = re.sub(
+        r"\s+",
+        " ",
+        text
+    ).strip()
+
+    return text
+
+# =====================================================
+# DOMAIN DETECTION
+# =====================================================
+
+def detect_domain(df):
+
+    columns = " ".join(
+        df.columns.astype(str)
+    ).lower()
+
+    best_domain = "general"
+    best_score = 0
+
+    for domain, keywords in DOMAIN_KEYWORDS.items():
+
+        score = sum(
+            1 for keyword in keywords
+            if keyword in columns
+        )
+
+        if score > best_score:
+
+            best_score = score
+            best_domain = domain
+
+    return best_domain
+
+# =====================================================
+# RATING COLUMN DETECTION
+# =====================================================
+
+def is_rating_column(series):
+
+    try:
+
+        values = (
+            pd.to_numeric(
+                series.dropna(),
+                errors="coerce"
+            ).dropna()
+        )
+
+        if values.empty:
+            return False
+
+        return values.between(1, 5).all()
+
+    except:
+        return False
+
+# =====================================================
+# COLUMN VALIDATION
+# =====================================================
+
+def should_analyze_column(series):
+
+    values = (
+        series.dropna()
+        .astype(str)
+        .str.strip()
+    )
+
+    if values.empty:
+        return False
+
+    if is_rating_column(series):
+        return True
+
+    column_name = str(series.name).lower()
+
+    skip_keywords = [
+
+        "id",
+        "employee",
+        "emp",
+        "tenure",
+        "age",
+        "gender",
+        "date",
+        "time",
+        "phone",
+        "email",
+        "location",
+        "salary",
+        "code",
+        "name"
+    ]
+
+    if any(
+        keyword in column_name
+        for keyword in skip_keywords
+    ):
+        return False
+
+    texts = values.tolist()
+
+    meaningful_count = 0
+
+    for text in texts:
+
+        clean = clean_text(text)
+
+        words = clean.split()
+
+        if len(words) >= MIN_WORDS_FOR_NLP:
+            meaningful_count += 1
+
+    ratio = meaningful_count / len(texts)
+
+    return ratio >= MIN_MEANINGFUL_RATIO
+
+# =====================================================
+# RATING → SENTIMENT
+# =====================================================
+
+def rating_to_sentiment(value):
+
+    try:
+
+        value = round(float(value))
+
+        value = min(max(value, 1), 5)
+
+        return RATING_SENTIMENT.get(
+            value,
+            "NEUTRAL"
+        )
+
+    except:
+        return "NEUTRAL"
+
+# =====================================================
+# MAP SENTIMENT
+# =====================================================
+
+def map_sentiment(label, score):
+
+    if score < SENTIMENT_THRESHOLD:
+        return "NEUTRAL"
+
+    if label.upper() == "POSITIVE":
+        return "POSITIVE"
+
+    if label.upper() == "NEGATIVE":
+        return "NEGATIVE"
+
+    return "NEUTRAL"
+
+# =====================================================
+# SENTIMENT ANALYSIS
+# =====================================================
+
+def get_sentiment_batch(texts):
+
+    cleaned_texts = [
+        clean_text(t)
+        for t in texts
+    ]
+
+    results = sentiment_model(
+        cleaned_texts,
+        truncation=True,
+        batch_size=32
+    )
+
+    sentiments = []
+    scores = []
+
+    for result in results:
+
+        sentiment = map_sentiment(
+            result["label"],
+            result["score"]
+        )
+
+        if sentiment == "NEUTRAL":
+            score = 0
+        else:
+            score = round(
+                result["score"] * 100,
+                2
+            )
+
+        sentiments.append(sentiment)
+        scores.append(score)
+
+    return sentiments, scores
+
+# =====================================================
+# TOPIC MODEL
+# =====================================================
+
+def get_topic_batch(texts):
+
+    topics = ENTERPRISE_TOPICS
+
+    topic_embeddings = embedding_model.encode(
+        topics,
+        convert_to_tensor=True
+    )
+
+    cleaned_texts = [
+        clean_text(t)
+        for t in texts
+    ]
+
+    text_embeddings = embedding_model.encode(
+        cleaned_texts,
+        convert_to_tensor=True
+    )
+
+    assigned_topics = []
+
+    for emb in text_embeddings:
+
+        scores = util.cos_sim(
+            emb,
+            topic_embeddings
+        )[0]
+
+        best_idx = int(scores.argmax())
+
+        topic = topics[best_idx]
+
+        assigned_topics.append(topic)
+
+    return assigned_topics
+
+# =====================================================
+# PROCESS DATAFRAME
+# =====================================================
+
+def process_dataframe(df):
+
+    all_topics = []
+
+    for col in df.columns:
+
+        if not should_analyze_column(df[col]):
+            continue
+
+        texts = (
+            df[col]
+            .fillna("")
+            .astype(str)
+            .tolist()
+        )
+
+        if is_rating_column(df[col]):
+
+            sentiment_vals = [
+                rating_to_sentiment(v)
+                for v in texts
+            ]
+
+            df[f"{col}_sentiment"] = sentiment_vals
+
+            continue
+
+        valid_mask = []
+
+        for t in texts:
+
+            clean = clean_text(t)
+
+            words = clean.split()
+
+            valid_mask.append(
+                len(words) >= MIN_WORDS_FOR_NLP
+            )
+
+        valid_texts = [
+            t
+            for t, valid in zip(texts, valid_mask)
+            if valid
+        ]
+
+        topic_vals = ["General"] * len(texts)
+
+        sentiment_vals = ["NEUTRAL"] * len(texts)
+
+        sentiment_scores = [0] * len(texts)
+
+        if valid_texts:
+
+            topics = get_topic_batch(valid_texts)
+
+            sentiments, scores = (
+                get_sentiment_batch(valid_texts)
+            )
+
+            idx = 0
+
+            for i, valid in enumerate(valid_mask):
+
+                if valid:
+
+                    topic_vals[i] = topics[idx]
+
+                    sentiment_vals[i] = sentiments[idx]
+
+                    sentiment_scores[i] = scores[idx]
+
+                    idx += 1
+
+        df[f"{col}_topic"] = topic_vals
+
+        df[f"{col}_sentiment"] = sentiment_vals
+
+        df[f"{col}_sentiment_score"] = sentiment_scores
+
+        all_topics.extend(topic_vals)
+
+    sentiment_cols = [
+
+        c for c in df.columns
+        if (
+            c.endswith("_sentiment")
+            and c != "overall_sentiment"
+        )
+    ]
+
+    overall_sentiments = []
+
+    for _, row in df.iterrows():
+
+        sentiments = [
+            row[c]
+            for c in sentiment_cols
+        ]
+
+        positive = sentiments.count("POSITIVE")
+
+        negative = sentiments.count("NEGATIVE")
+
+        if positive > negative:
+
+            overall = "POSITIVE"
+
+        elif negative > positive:
+
+            overall = "NEGATIVE"
+
+        else:
+
+            overall = "NEUTRAL"
+
+        overall_sentiments.append(overall)
+
+    df["overall_sentiment"] = overall_sentiments
+
+    return df, all_topics
+
+# =====================================================
+# FILE INSIGHTS
+# =====================================================
+
+def generate_file_insights(df):
+
+    sentiments = (
+        df["overall_sentiment"]
+        .dropna()
+        .tolist()
+    )
+
+    positive = sentiments.count("POSITIVE")
+
+    negative = sentiments.count("NEGATIVE")
+
+    neutral = sentiments.count("NEUTRAL")
+
+    overall = (
+        "POSITIVE"
+        if positive >= negative
+        else "NEGATIVE"
+    )
+
+    return {
+
+        "total_records": len(df),
+
+        "overall_sentiment": overall,
+
+        "positive": positive,
+
+        "negative": negative,
+
+        "neutral": neutral
+    }
+
+# =====================================================
+# NEGATIVE TOPICS
+# =====================================================
+
+def extract_negative_topics(df):
+
+    topic_cols = [
+        c for c in df.columns
+        if c.endswith("_topic")
+    ]
+
+    negative_topics = []
+
+    for t_col in topic_cols:
+
+        base = t_col.replace(
+            "_topic",
+            ""
+        )
+
+        s_col = f"{base}_sentiment"
+
+        if s_col not in df.columns:
+            continue
+
+        temp = pd.DataFrame({
+
+            "Topic": df[t_col],
+
+            "Sentiment": df[s_col]
+        })
+
+        negative_df = temp[
+            temp["Sentiment"] == "NEGATIVE"
+        ]
+
+        negative_topics.extend(
+            negative_df["Topic"].tolist()
+        )
+
+    if not negative_topics:
+
+        return pd.DataFrame(
+            columns=[
+                "Topic",
+                "Frequency"
+            ]
+        )
+
+    negative_df = (
+        pd.Series(negative_topics)
+        .value_counts()
+        .head(5)
+        .reset_index()
+    )
+
+    negative_df.columns = [
+        "Topic",
+        "Frequency"
+    ]
+
+    return negative_df
+
+# =====================================================
+# TOP REASONS
+# =====================================================
+
+def extract_top_reasons(df):
+
+    topic_cols = [
+        c for c in df.columns
+        if c.endswith("_topic")
+    ]
+
+    all_topics = []
+
+    for col in topic_cols:
+
+        vals = (
+            df[col]
+            .dropna()
+            .astype(str)
+            .tolist()
+        )
+
+        all_topics.extend(vals)
+
+    counter = Counter(all_topics)
+
+    return counter.most_common(10)
+
+# =====================================================
+# DEPARTMENT ANALYSIS
+# =====================================================
+
+def generate_department_sentiment(df):
+
+    department_cols = [
+
+        c for c in df.columns
+
+        if any(keyword in c.lower() for keyword in [
+
+            "department",
+            "business unit",
+            "unit",
+            "team",
+            "division"
+        ])
+    ]
+
+    if not department_cols:
+        return pd.DataFrame()
+
+    dept_col = department_cols[0]
+
+    result = pd.crosstab(
+        df[dept_col],
+        df["overall_sentiment"]
+    ).reset_index()
+
+    return result
+
+# =====================================================
+# DESIGNATION ANALYSIS
+# =====================================================
+
+def generate_designation_sentiment(df):
+
+    designation_cols = [
+
+        c for c in df.columns
+
+        if any(keyword in c.lower() for keyword in [
+
+            "designation",
+            "position",
+            "role",
+            "title"
+        ])
+    ]
+
+    if not designation_cols:
+        return pd.DataFrame()
+
+    desig_col = designation_cols[0]
+
+    result = pd.crosstab(
+        df[desig_col],
+        df["overall_sentiment"]
+    ).reset_index()
+
+    return result
+
+# =====================================================
+# BUSINESS RISKS
+# =====================================================
+
+def generate_risk_analysis(
+    processed_df,
+    dept_df=None
+):
+
+    risks = []
+
+    negative_topics = []
+
+    topic_cols = [
+
+        c for c in processed_df.columns
+        if c.endswith("_topic")
+    ]
+
+    for t_col in topic_cols:
+
+        base = t_col.replace(
+            "_topic",
+            ""
+        )
+
+        s_col = f"{base}_sentiment"
+
+        if s_col not in processed_df.columns:
+            continue
+
+        temp = processed_df[
+            processed_df[s_col] == "NEGATIVE"
+        ]
+
+        negative_topics.extend(
+
+            temp[t_col]
+            .dropna()
+            .astype(str)
+            .tolist()
+        )
+
+    top_negative = Counter(
+        negative_topics
+    ).most_common(3)
+
+    if top_negative:
+
+        risk_topics = ", ".join([
+            t[0]
+            for t in top_negative
+        ])
+
+        risks.append(
+
+            f"The strongest negative sentiment signals across the dataset are centered around {risk_topics}. These themes indicate operational dissatisfaction, experience gaps, and declining engagement patterns that require immediate leadership intervention through process optimization, stronger communication systems, and accountability frameworks."
+        )
+
+    if dept_df is not None and not dept_df.empty:
+
+        highest_risk_department = None
+        highest_negative = -1
+
+        for _, row in dept_df.iterrows():
+
+            negative_count = row.get(
+                'NEGATIVE',
+                0
+            )
+
+            if negative_count > highest_negative:
+
+                highest_negative = negative_count
+
+                highest_risk_department = row.iloc[0]
+
+        if highest_risk_department:
+
+            risks.append(
+
+                f"The '{highest_risk_department}' department currently demonstrates the highest concentration of negative sentiment. Leadership should prioritize operational reviews, workforce engagement initiatives, management effectiveness evaluations, and cross-functional collaboration improvements within this department."
+            )
+
+    designation_df = generate_designation_sentiment(
+        processed_df
+    )
+
+    if not designation_df.empty:
+
+        highest_risk_position = None
+        highest_negative = -1
+
+        for _, row in designation_df.iterrows():
+
+            negative_count = row.get(
+                'NEGATIVE',
+                0
+            )
+
+            if negative_count > highest_negative:
+
+                highest_negative = negative_count
+
+                highest_risk_position = row.iloc[0]
+
+        if highest_risk_position:
+
+            risks.append(
+
+                f"The '{highest_risk_position}' position group is reflecting elevated negative sentiment levels. This suggests workload pressure, leadership alignment gaps, career progression concerns, or operational inefficiencies affecting this workforce segment."
+            )
+
+    return risks[:3]
+
+# =====================================================
+# AI RECOMMENDATIONS
+# =====================================================
+
+def generate_ai_recommendations(
+    processed_df,
+    dept_df=None
+):
+
+    recommendations = []
+
+    topic_cols = [
+
+        c for c in processed_df.columns
+        if c.endswith("_topic")
+    ]
+
+    all_topics = []
+
+    for col in topic_cols:
+
+        vals = (
+
+            processed_df[col]
+            .dropna()
+            .astype(str)
+            .tolist()
+        )
+
+        all_topics.extend(vals)
+
+    top_topics = Counter(
+        all_topics
+    ).most_common(3)
+
+    if top_topics:
+
+        top_topic_names = ", ".join([
+            t[0]
+            for t in top_topics
+        ])
+
+        recommendations.append(
+
+            f"Leadership should prioritize strategic improvements around {top_topic_names}. These are the dominant discussion themes across the dataset and require stronger operational planning, continuous listening systems, workforce alignment initiatives, and process modernization strategies."
+        )
+
+    if dept_df is not None and not dept_df.empty:
+
+        highest_negative_department = None
+        highest_negative = -1
+
+        for _, row in dept_df.iterrows():
+
+            negative_count = row.get(
+                'NEGATIVE',
+                0
+            )
+
+            if negative_count > highest_negative:
+
+                highest_negative = negative_count
+
+                highest_negative_department = row.iloc[0]
+
+        if highest_negative_department:
+
+            recommendations.append(
+
+                f"The '{highest_negative_department}' department should receive immediate leadership focus through manager capability development, engagement improvement programs, workflow optimization, and operational support enhancements to improve employee and customer sentiment outcomes."
+            )
+
+    designation_df = generate_designation_sentiment(
+        processed_df
+    )
+
+    if not designation_df.empty:
+
+        highest_negative_position = None
+        highest_negative = -1
+
+        for _, row in designation_df.iterrows():
+
+            negative_count = row.get(
+                'NEGATIVE',
+                0
+            )
+
+            if negative_count > highest_negative:
+
+                highest_negative = negative_count
+
+                highest_negative_position = row.iloc[0]
+
+        if highest_negative_position:
+
+            recommendations.append(
+
+                f"Leadership should implement focused retention and capability-building strategies for the '{highest_negative_position}' workforce segment through growth initiatives, recognition systems, balanced workload structures, and improved leadership accessibility."
+            )
+
+    return recommendations[:3]
+
+# =====================================================
+# CROSS FILE INTELLIGENCE
+# =====================================================
+
+def generate_cross_file_intelligence(
+    dfs
+):
+
+    combined_df = pd.concat(
+        dfs,
+        ignore_index=True
+    )
+
+    insights = generate_file_insights(
+        combined_df
+    )
+
+    topic_cols = [
+
+        c for c in combined_df.columns
+        if c.endswith("_topic")
+    ]
+
+    all_topics = []
+
+    for col in topic_cols:
+
+        vals = (
+
+            combined_df[col]
+            .dropna()
+            .astype(str)
+            .tolist()
+        )
+
+        all_topics.extend(vals)
+
+    topic_counter = Counter(
+        all_topics
+    )
+
+    top_topics = topic_counter.most_common(5)
+
+    top_topic_names = ", ".join([
+
+        t[0]
+        for t in top_topics[:3]
+    ])
+
+    negative_topics = []
+
+    for t_col in topic_cols:
+
+        base = t_col.replace(
+            "_topic",
+            ""
+        )
+
+        s_col = f"{base}_sentiment"
+
+        if s_col not in combined_df.columns:
+            continue
+
+        negative_df = combined_df[
+            combined_df[s_col] == "NEGATIVE"
+        ]
+
+        negative_topics.extend(
+
+            negative_df[t_col]
+            .dropna()
+            .astype(str)
+            .tolist()
+        )
+
+    negative_counter = Counter(
+        negative_topics
+    )
+
+    top_negative_topics = (
+        negative_counter.most_common(5)
+    )
+
+    risk_topic_names = ", ".join([
+
+        t[0]
+        for t in top_negative_topics[:3]
+    ])
+
+    dept_df = generate_department_sentiment(
+        combined_df
+    )
+
+    highest_negative_department = None
+    highest_negative_department_count = -1
+
+    if not dept_df.empty:
+
+        for _, row in dept_df.iterrows():
+
+            negative_count = row.get(
+                'NEGATIVE',
+                0
+            )
+
+            if negative_count > highest_negative_department_count:
+
+                highest_negative_department_count = (
+                    negative_count
+                )
+
+                highest_negative_department = (
+                    row.iloc[0]
+                )
+
+    designation_df = (
+        generate_designation_sentiment(
+            combined_df
+        )
+    )
+
+    highest_negative_designation = None
+    highest_negative_designation_count = -1
+
+    if not designation_df.empty:
+
+        for _, row in designation_df.iterrows():
+
+            negative_count = row.get(
+                'NEGATIVE',
+                0
+            )
+
+            if negative_count > highest_negative_designation_count:
+
+                highest_negative_designation_count = (
+                    negative_count
+                )
+
+                highest_negative_designation = (
+                    row.iloc[0]
+                )
+
+    risks = []
+
+    risks.append(
+
+        f"Across all uploaded datasets, the strongest negative sentiment signals are concentrated around {risk_topic_names}. These themes represent recurring organizational concerns appearing consistently across multiple datasets."
+    )
+
+    if highest_negative_department:
+
+        risks.append(
+
+            f"The '{highest_negative_department}' department demonstrates the highest aggregated negative sentiment across all uploaded datasets, indicating sustained operational or engagement challenges requiring immediate intervention."
+        )
+
+    if highest_negative_designation:
+
+        risks.append(
+
+            f"The '{highest_negative_designation}' designation group reflects the highest cumulative negative sentiment across datasets, indicating workforce pressure, dissatisfaction, or support gaps affecting long-term productivity and retention."
+        )
+
+    recommendations = []
+
+    recommendations.append(
+
+        f"Leadership should prioritize transformation initiatives focused on {top_topic_names}, as these themes dominate discussions across all uploaded datasets and represent the largest improvement opportunities."
+    )
+
+    if highest_negative_department:
+
+        recommendations.append(
+
+            f"A dedicated improvement and recovery strategy should be implemented for the '{highest_negative_department}' department through operational optimization, leadership alignment, engagement enhancement programs, and workflow redesign initiatives."
+        )
+
+    if highest_negative_designation:
+
+        recommendations.append(
+
+            f"Leadership should deploy targeted workforce engagement and retention strategies for the '{highest_negative_designation}' designation group through growth opportunities, recognition systems, workload balancing, and role-specific support frameworks."
+        )
+
+    return {
+
+        "overall_sentiment":
+        insights["overall_sentiment"],
+
+        "positive":
+        insights["positive"],
+
+        "negative":
+        insights["negative"],
+
+        "neutral":
+        insights["neutral"],
+
+        "top_topics":
+        top_topic_names,
+
+        "risk_topics":
+        risk_topic_names,
+
+        "risks":
+        risks,
+
+        "recommendations":
+        recommendations
+    }
+
+-----------------------------------------------------------------------------------------------
+
+    
